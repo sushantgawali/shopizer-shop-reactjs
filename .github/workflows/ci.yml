@@ -8,7 +8,9 @@ on:
 
 env:
   NODE_VERSION: '16'
-  IMAGE_NAME: shopizer-shop-reactjs
+
+permissions:
+  contents: write
 
 jobs:
   # ─────────────────────────────────────────────
@@ -40,7 +42,7 @@ jobs:
         env:
           CI: false
 
-      # Upload build/ so the docker job (and any future deploy job)
+      # Upload build/ so the release job can publish it
       # can download the pre-built artifact without rebuilding
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
@@ -50,12 +52,12 @@ jobs:
           retention-days: 7
 
   # ─────────────────────────────────────────────
-  # Job 2: Build the Docker image and push it to
-  #         Docker Hub. Only runs on pushes to main
+  # Job 2: Create a GitHub Release with the built
+  #         React artifact. Only runs on pushes to main
   #         (skipped for pull requests).
   # ─────────────────────────────────────────────
-  docker:
-    name: Build & Push Docker Image
+  release:
+    name: Create GitHub Release
     runs-on: ubuntu-latest
     needs: build
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -64,43 +66,28 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # Download the pre-built React bundle so the Docker
-      # build can copy it directly instead of rebuilding
+      # Download the pre-built React bundle
       - name: Download build artifact
         uses: actions/download-artifact@v4
         with:
           name: react-build-${{ github.sha }}
           path: build/
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - name: Create release archive
+        run: tar -czf shopizer-react-build-${{ github.sha }}.tar.gz -C build .
 
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_PASSWORD }}
-
-      # Produces two tags:
-      #   latest          → always points to the newest main build
-      #   sha-<short-sha> → immutable reference for rollback / tracing
-      - name: Extract image metadata
+      - name: Set release metadata
         id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=raw,value=latest
-            type=sha,prefix=sha-,format=short
+        run: |
+          SHORT_SHA="${GITHUB_SHA::7}"
+          echo "tag=build-${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+          echo "name=Build ${SHORT_SHA}" >> "$GITHUB_OUTPUT"
 
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v6
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
         with:
-          context: .
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          # Layer cache backed by GitHub Actions cache
-          # → subsequent builds are significantly faster
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          tag_name: ${{ steps.meta.outputs.tag }}
+          name: ${{ steps.meta.outputs.name }}
+          target_commitish: ${{ github.sha }}
+          generate_release_notes: true
+          files: shopizer-react-build-${{ github.sha }}.tar.gz
