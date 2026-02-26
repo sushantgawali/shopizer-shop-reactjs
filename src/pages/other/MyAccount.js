@@ -13,13 +13,14 @@ import constant from '../../util/constant';
 import { setLoader } from "../../redux/actions/loaderActions";
 import { useToasts } from "react-toast-notifications";
 import { connect } from "react-redux";
-import { getState, getCountry, getShippingState } from "../../redux/actions/userAction";
+import { getState, getCountry, getShippingState, getAddresses, createAddress, updateAddress, deleteAddress, setDefaultAddress } from "../../redux/actions/userAction";
 import Script from 'react-load-script';
 import { multilanguage } from "redux-multilanguage";
 import SweetAlert from 'react-bootstrap-sweetalert';
 import { deleteAllFromCart } from "../../redux/actions/cartActions";
 import { setUser } from "../../redux/actions/userAction";
 import { setLocalData } from '../../util/helper';
+import AddressModal from "../../components/address/AddressModal";
 const changePasswordForm = {
   userName: {
     name: "userName",
@@ -274,11 +275,15 @@ const billingForm = {
     }
   },
 }
-const MyAccount = ({ language, setUser, deleteAllFromCart, merchant, strings, location, setLoader, getState, getCountry, getShippingState, countryData, stateData, shipStateData, userData }) => {
+const MyAccount = ({ language, setUser, deleteAllFromCart, merchant, strings, location, setLoader, getState, getCountry, getShippingState, getAddresses, createAddress, updateAddress, deleteAddress, setDefaultAddress, countryData, stateData, shipStateData, userData, addresses }) => {
   const { pathname } = location;
   const { addToast } = useToasts();
   const history = useHistory();
   const [isDeleted, setIsDeleted] = useState(false)
+  const [showAddressModal, setShowAddressModal] = useState(false)
+  const [editingAddress, setEditingAddress] = useState(null)
+  const [addressStateData, setAddressStateData] = useState([])
+  const [deletingAddressId, setDeletingAddressId] = useState(null)
   const { register, handleSubmit, errors, watch, setError, clearErrors, reset } = useForm({
     mode: "onChange",
     criteriaMode: "all"
@@ -316,6 +321,7 @@ const MyAccount = ({ language, setUser, deleteAllFromCart, merchant, strings, lo
     getState()
     getCountry()
     getShippingState()
+    getAddresses()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   const getProfile = async () => {
@@ -654,6 +660,81 @@ const MyAccount = ({ language, setUser, deleteAllFromCart, merchant, strings, lo
       setLoader(false)
     }
   }
+  const onAddressCountryChange = async (code) => {
+    if (!code) return;
+    try {
+      const action = constant.ACTION.ZONES + '?code=' + code;
+      const response = await WebService.get(action);
+      setAddressStateData(response || []);
+    } catch (error) {
+      setAddressStateData([]);
+    }
+  }
+
+  const onAddAddress = async (data) => {
+    setLoader(true)
+    try {
+      await createAddress(data)
+      await getAddresses()
+      setShowAddressModal(false)
+      setEditingAddress(null)
+      addToast("Address added successfully.", { appearance: "success", autoDismiss: true })
+    } catch (error) {
+      setShowAddressModal(false)
+      setEditingAddress(null)
+      addToast("Failed to add address.", { appearance: "error", autoDismiss: true })
+    }
+    setLoader(false)
+  }
+
+  const onEditAddress = async (data) => {
+    if (!editingAddress || !editingAddress.id) {
+      return onAddAddress(data)
+    }
+    setLoader(true)
+    try {
+      await updateAddress(editingAddress.id, data)
+      await getAddresses()
+      setShowAddressModal(false)
+      setEditingAddress(null)
+      addToast("Address updated successfully.", { appearance: "success", autoDismiss: true })
+    } catch (error) {
+      setShowAddressModal(false)
+      setEditingAddress(null)
+      addToast("Failed to update address.", { appearance: "error", autoDismiss: true })
+    }
+    setLoader(false)
+  }
+
+  const onDeleteAddressConfirm = (id) => {
+    setDeletingAddressId(id)
+  }
+
+  const onDeleteAddress = async () => {
+    setLoader(true)
+    try {
+      await deleteAddress(deletingAddressId)
+      await getAddresses()
+      setDeletingAddressId(null)
+      addToast("Address deleted successfully.", { appearance: "success", autoDismiss: true })
+    } catch (error) {
+      addToast("Failed to delete address.", { appearance: "error", autoDismiss: true })
+    }
+    setLoader(false)
+  }
+
+  const onSetDefault = async (id) => {
+    setLoader(true)
+    try {
+      await setDefaultAddress(id)
+      await getAddresses()
+      addToast("Default address updated.", { appearance: "success", autoDismiss: true })
+    } catch (error) {
+      addToast("Failed to set default address.", { appearance: "error", autoDismiss: true })
+    }
+    setLoader(false)
+  }
+
   return (
     <Fragment>
       <MetaTags>
@@ -1075,10 +1156,72 @@ const MyAccount = ({ language, setUser, deleteAllFromCart, merchant, strings, lo
                     </Card>
                     <Card className="single-my-account mb-20">
                       <Card.Header className="panel-heading">
+                        <Accordion.Toggle variant="link" eventKey="5">
+                          <h3 className="panel-title">
+                            <span>5 .</span> My Addresses
+                          </h3>
+                        </Accordion.Toggle>
+                      </Card.Header>
+                      <Accordion.Collapse eventKey="5">
+                        <Card.Body>
+                          <div className="myaccount-info-wrapper">
+                            <div className="account-info-wrapper">
+                              <h4>My Addresses</h4>
+                            </div>
+                            <div className="row">
+                              {addresses && addresses.map(addr => (
+                                <div key={addr.id} className="col-lg-6 col-md-6 mb-20">
+                                  <div className="address-card border p-3" style={{ borderRadius: "4px" }}>
+                                    <div className="d-flex justify-content-between align-items-center mb-2">
+                                      <strong>{addr.addressLabel || addr.addressType}</strong>
+                                      <span className={"badge badge-" + (addr.addressType === 'BILLING' ? 'primary' : 'secondary')}>
+                                        {addr.addressType}
+                                      </span>
+                                    </div>
+                                    {addr.defaultAddress && (
+                                      <span className="badge badge-success mb-2">Default</span>
+                                    )}
+                                    <p className="mb-1">{addr.firstName} {addr.lastName}</p>
+                                    <p className="mb-1">{addr.address}, {addr.city}</p>
+                                    <p className="mb-2">{addr.zone || addr.stateProvince}, {addr.country} {addr.postalCode}</p>
+                                    <div className="mt-2" style={{ display: "flex", gap: "8px" }}>
+                                      <button
+                                        className="btn btn-sm btn-outline-primary"
+                                        onClick={() => { setEditingAddress(addr); setAddressStateData([]); setShowAddressModal(true); }}
+                                      >Edit</button>
+                                      {!addr.defaultAddress && (
+                                        <button
+                                          className="btn btn-sm btn-outline-secondary"
+                                          onClick={() => onSetDefault(addr.id)}
+                                        >Set Default</button>
+                                      )}
+                                      <button
+                                        className="btn btn-sm btn-outline-danger"
+                                        onClick={() => onDeleteAddressConfirm(addr.id)}
+                                      >Delete</button>
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                            <div className="billing-back-btn mt-20">
+                              <div className="billing-btn">
+                                <button
+                                  type="button"
+                                  onClick={() => { setEditingAddress(null); setAddressStateData([]); setShowAddressModal(true); }}
+                                >+ Add New Address</button>
+                              </div>
+                            </div>
+                          </div>
+                        </Card.Body>
+                      </Accordion.Collapse>
+                    </Card>
+                    <Card className="single-my-account mb-20">
+                      <Card.Header className="panel-heading">
                         {/* */}
                         <Accordion.Toggle variant="link" eventKey="4">
                           <h3 className="panel-title">
-                            <span>5 .</span> {strings["Account Management"]}
+                            <span>6 .</span> {strings["Account Management"]}
                           </h3>
                         </Accordion.Toggle>
                       </Card.Header>
@@ -1128,6 +1271,29 @@ const MyAccount = ({ language, setUser, deleteAllFromCart, merchant, strings, lo
             Are you sure that you want to permanently delete this account
         </SweetAlert>
         }
+        {
+          deletingAddressId &&
+          <SweetAlert
+            showCancel
+            cancelBtnBsStyle="light"
+            confirmBtnText="Yes, delete it!"
+            confirmBtnBsStyle="danger"
+            onConfirm={onDeleteAddress}
+            onCancel={() => setDeletingAddressId(null)}
+            title="Delete Address?"
+          >
+            Are you sure you want to delete this address?
+          </SweetAlert>
+        }
+        <AddressModal
+          show={showAddressModal}
+          onHide={() => { setShowAddressModal(false); setEditingAddress(null); }}
+          onSubmit={editingAddress && editingAddress.id ? onEditAddress : onAddAddress}
+          initialValues={editingAddress}
+          countryData={countryData}
+          stateData={addressStateData}
+          onCountryChange={onAddressCountryChange}
+        />
       </Layout>
     </Fragment >
   );
@@ -1141,12 +1307,10 @@ const mapStateToProps = (state) => {
     countryData: state.userData.country,
     language: state.multilanguage.currentLanguageCode,
     userData: state.userData.userData,
-    // cartItems: state.cartData.cartItems,
-    // currentLocation: state.userData.currentAddress,
     stateData: state.userData.state,
     shipStateData: state.userData.shipState,
-    merchant: state.merchantData.merchant
-    // defaultStore: state.merchantData.defaultStore,
+    merchant: state.merchantData.merchant,
+    addresses: state.userData.addresses,
   };
 };
 const mapDispatchToProps = dispatch => {
@@ -1168,6 +1332,21 @@ const mapDispatchToProps = dispatch => {
     },
     getShippingState: (code) => {
       dispatch(getShippingState(code));
+    },
+    getAddresses: () => {
+      return dispatch(getAddresses());
+    },
+    createAddress: (payload) => {
+      return dispatch(createAddress(payload));
+    },
+    updateAddress: (id, payload) => {
+      return dispatch(updateAddress(id, payload));
+    },
+    deleteAddress: (id) => {
+      return dispatch(deleteAddress(id));
+    },
+    setDefaultAddress: (id) => {
+      return dispatch(setDefaultAddress(id));
     },
   };
 };
