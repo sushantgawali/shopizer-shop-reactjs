@@ -8,6 +8,7 @@ export const SET_SHIPPING_COUNTRY = "SET_SHIPPING_COUNTRY";
 export const SET_STATE = "SET_STATE";
 export const SET_SHIP_STATE = "SET_SHIP_STATE";
 export const GET_CURRENT_ADDRESS = "GET_CURRENT_ADDRESS";
+export const SET_ADDRESSES = "SET_ADDRESSES";
 Geocode.setApiKey(window._env_.APP_MAP_API_KEY);
 Geocode.setLanguage("en");
 export const setUser = (data) => {
@@ -88,6 +89,48 @@ export const getCurrentLocation = () => {
         }
     }
 }
+export const getAddresses = () => {
+    return async dispatch => {
+        try {
+            let action = constant.ACTION.AUTH + constant.ACTION.CUSTOMER + constant.ACTION.ADDRESSES;
+            let response = await WebService.get(action);
+            dispatch({
+                type: SET_ADDRESSES,
+                payload: response
+            });
+        } catch (error) {
+        }
+    }
+}
+
+export const createAddress = (payload) => {
+    return async dispatch => {
+        let action = constant.ACTION.AUTH + constant.ACTION.CUSTOMER + constant.ACTION.ADDRESSES;
+        await WebService.post(action, payload);
+    }
+}
+
+export const updateAddress = (id, payload) => {
+    return async dispatch => {
+        let action = constant.ACTION.AUTH + constant.ACTION.CUSTOMER + constant.ACTION.ADDRESSES + '/' + id;
+        await WebService.put(action, payload);
+    }
+}
+
+export const deleteAddress = (id) => {
+    return async dispatch => {
+        let action = constant.ACTION.AUTH + constant.ACTION.CUSTOMER + constant.ACTION.ADDRESSES + '/' + id;
+        await WebService.delete(action);
+    }
+}
+
+export const setDefaultAddress = (id) => {
+    return async dispatch => {
+        let action = constant.ACTION.AUTH + constant.ACTION.CUSTOMER + constant.ACTION.ADDRESSES + '/' + id + '/default';
+        await WebService.patch(action, {});
+    }
+}
+
 export const getCurrentAddress = (lat, long) => {
     return async dispatch => {
         Geocode.fromLatLng(lat, long).then(
