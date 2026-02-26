@@ -31,6 +31,7 @@ const Constant = {
         CONTACT: 'contact/',
         ORDERS: 'orders/',
         ADDRESS: 'address',
+        ADDRESSES: 'addresses',
         RESET: 'reset/',
         REQUEST: 'request/',
         SEARCH: 'search/',
